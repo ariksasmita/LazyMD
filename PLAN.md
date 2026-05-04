@@ -1557,6 +1557,8 @@ html, body, #app {
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
+| **`indentWithTab` is a `KeyBinding`, not an `Extension`** | Editor crashes with "Unrecognized extension value" | Wrap it in `keymap.of()` along with `closeBracketsKeymap` |
+| **Vite pre-bundles `@codemirror/*` into multiple chunks** | Same "multiple instances" error | Exclude all `@codemirror/*` packages from `optimizeDeps` in `vite.config.ts` |
 | `wa-sqlite` OPFS VFS import paths change between versions | Blocks Phase 2 entirely | Pin exact version in `package.json`. Verify against current npm build before writing worker code. |
 | GIS popup blocked by ad-blockers | No Google Drive auth | Document manual redirect fallback. Add detection: if GIS script fails to load, show manual OAuth flow option. |
 | OPFS not available in all browsers | No local storage in Firefox < 111, Safari quirks | Feature-detect `navigator.storage.getDirectory()`. Show clear error if unavailable. Firefox 111+ and Chrome 86+ are fine. |
