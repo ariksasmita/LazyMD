@@ -11,6 +11,8 @@ const {
   activeId,
   activeNote,
   activeContent,
+  isLoading,
+  loadAll,
   selectNote,
   createNote,
   saveActiveNote,
@@ -75,9 +77,14 @@ function stopDrag() {
 
 // ── Init ──
 onMounted(async () => {
+  await loadAll()
   await nextTick()
   mount()
-  updatePreview(activeContent.value)
+  // Set content to active note after DB load
+  if (activeNote.value) {
+    setContent(activeNote.value.content)
+    updatePreview(activeNote.value.content)
+  }
   focus()
 })
 </script>

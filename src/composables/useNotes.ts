@@ -1,122 +1,84 @@
+// src/composables/useNotes.ts
 import { ref, computed } from 'vue'
+import { useDatabase } from './useDatabase'
+import type { Note } from '@/types'
 
-export interface MockNote {
-  id: string
-  title: string
-  content: string
-  created_at: number
-  updated_at: number
-}
-
-/**
- * Temporary in-memory notes for Phase 1.
- * Phase 2 replaces this with useNotes backed by SQLite WASM.
- */
 export function useNotes() {
-  const notes = ref<MockNote[]>([
-    {
-      id: 'welcome',
-      title: 'Welcome to LazyMD',
-      content: `# Welcome to LazyMD
-
-A **local-first** Markdown editor with Vim motions, running entirely in your browser.
-
-## Features
-
-- **Vim motions** — visual block, macros, ex commands, the works
-- **Split-pane** — write on the left, read on the right
-- **Local-first** — your notes live in your browser, powered by SQLite
-- **Google Drive sync** — push/pull to the cloud when you want
-
-## Vim Cheat Sheet
-
-| Mode    | Key   | Action          |
-|---------|-------|-----------------|
-| Normal  | \`dd\`  | Delete line     |
-| Normal  | \`yy\`  | Yank line       |
-| Normal  | \`p\`   | Paste after     |
-| Visual  | \`V\`   | Line visual     |
-| Visual  | \`Ctrl+V\` | Block visual |
-| Command | \`:w\`  | Save (no-op)    |
-| Command | \`:q\`  | Close (no-op)   |
-
----
-
-> Start typing to see the live preview update.
-
-\`\`\`javascript
-// Code blocks work too
-const greeting = "Hello, LazyMD!";
-console.log(greeting);
-\`\`\`
-`,
-      created_at: Date.now() - 86400000,
-      updated_at: Date.now() - 86400000,
-    },
-    {
-      id: 'second',
-      title: 'Getting Started',
-      content: `# Getting Started
-
-## Creating Notes
-
-Click the **+** button in the sidebar to create a new note.
-
-## Editing
-
-Just start typing. The editor is powered by **CodeMirror 6** with full Vim support.
-
-## Keyboard Shortcuts
-
-- Use Vim motions as you'd expect
-- The split-pane divider is draggable with your mouse
-
-## What's Next?
-
-- Phase 2: SQLite WASM storage (notes persist across sessions)
-- Phase 3: Google Drive sync
-- Phase 4: Full PWA with offline support
-`,
-      created_at: Date.now() - 3600000,
-      updated_at: Date.now() - 3600000,
-    },
-  ])
-
-  const activeId = ref<string | null>('welcome')
+  const { isReady, init, query, run } = useDatabase()
+  const notes = ref<Note[]>([])
+  const activeId = ref<string | null>(null)
+  const isLoading = ref(false)
 
   const activeNote = computed(() =>
-    notes.value.find((n) => n.id === activeId.value) ?? null
+    notes.value.find(n => n.id === activeId.value) ?? null
   )
 
-  const activeContent = computed(() => activeNote.value?.content ?? '')
+  const activeContent = computed(() =>
+    activeNote.value?.content ?? ''
+  )
+
+  async function loadAll() {
+    isLoading.value = true
+    try {
+      if (!isReady.value) await init()
+      const rows = await query<Note>(
+        'SELECT * FROM notes WHERE is_deleted = 0 ORDER BY updated_at DESC'
+      )
+      // SQLite stores is_deleted as INTEGER, coerce to boolean
+      notes.value = rows.map(row => ({
+        ...row,
+        is_deleted: Boolean(row.is_deleted),
+      }))
+      // Auto-select first note if none selected
+      if (!activeId.value && notes.value.length > 0) {
+        activeId.value = notes.value[0].id
+      }
+    } finally {
+      isLoading.value = false
+    }
+  }
 
   function selectNote(id: string) {
     activeId.value = id
   }
 
-  function createNote() {
+  async function createNote() {
+    if (!isReady.value) await init()
     const now = Date.now()
     const id = crypto.randomUUID()
-    notes.value.unshift({
-      id,
-      title: 'Untitled',
-      content: '# Untitled\n\n',
-      created_at: now,
-      updated_at: now,
-    })
+    await run(
+      `INSERT INTO notes (id, title, content, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, 'Untitled', '# Untitled\n\n', now, now]
+    )
+    await loadAll()
     activeId.value = id
   }
 
-  function saveActiveNote(content: string) {
-    const note = notes.value.find((n) => n.id === activeId.value)
-    if (!note) return
-    note.content = content
-    note.title = extractTitle(content) || 'Untitled'
-    note.updated_at = Date.now()
+  async function saveActiveNote(content: string) {
+    if (!activeId.value || !isReady.value) return
+    const title = extractTitle(content) || 'Untitled'
+    const now = Date.now()
+    await run(
+      `UPDATE notes SET content = ?, title = ?, updated_at = ? WHERE id = ?`,
+      [content, title, now, activeId.value]
+    )
+    // Update local ref without full reload
+    const note = notes.value.find(n => n.id === activeId.value)
+    if (note) {
+      note.content = content
+      note.title = title
+      note.updated_at = now
+    }
   }
 
-  function deleteNote(id: string) {
-    notes.value = notes.value.filter((n) => n.id !== id)
+  async function deleteNote(id: string) {
+    if (!isReady.value) return
+    await run(
+      `UPDATE notes SET is_deleted = 1, updated_at = ? WHERE id = ?`,
+      [Date.now(), id]
+    )
+    notes.value = notes.value.filter(n => n.id !== id)
     if (activeId.value === id) {
       activeId.value = notes.value[0]?.id ?? null
     }
@@ -132,6 +94,8 @@ Just start typing. The editor is powered by **CodeMirror 6** with full Vim suppo
     activeId,
     activeNote,
     activeContent,
+    isLoading,
+    loadAll,
     selectNote,
     createNote,
     saveActiveNote,
