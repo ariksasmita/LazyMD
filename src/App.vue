@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import EditorView from '@/views/EditorView.vue'
+import SyncBadge from '@/components/sync/SyncBadge.vue'
 </script>
 
 <template>
@@ -7,6 +8,7 @@ import EditorView from '@/views/EditorView.vue'
     <header class="app-header">
       <h1 class="logo">LazyMD</h1>
       <div class="header-right">
+        <SyncBadge />
         <span class="vim-badge">VIM</span>
       </div>
     </header>
